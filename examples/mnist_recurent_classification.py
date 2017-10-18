@@ -53,10 +53,13 @@ class RecurentLenet5(mod.ComposedModule):
 def cross_entropy(a, b, name):
     return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=a, labels=b, name=name))
 
-def to_one_hot(ns):
-    bs = ns.shape[0]
-    ret = np.zeros(shape=(bs, 10), dtype=np.float)
-    ret[range(bs), ns] = 1.0
+def to_one_hot(num_classes, labels):
+    '''Make int label into one-hot encoding
+    Param:
+    num_classes: int, number of classes
+    labels: 1D array''' 
+    ret = np.eye(num_classes)[labels]
+
     return ret
 
 BATCH_SIZE = 500
@@ -106,7 +109,7 @@ optimizer.create_output(TIME_DEPTH)
 accuracy.create_output(TIME_DEPTH)
 
 
-
+### PEP8 convention not quit
 def train_batch(sess, i):
     batch = train_mnist[i * BATCH_SIZE: (i + 1) * BATCH_SIZE]
     batch_labels = train_mnist_label[i * BATCH_SIZE: (i + 1) * BATCH_SIZE]
@@ -114,20 +117,20 @@ def train_batch(sess, i):
     feed_dict[inp.placeholder] = batch
     feed_dict[labels.placeholder] = to_one_hot(batch_labels)
     err = sess.run(optimizer.outputs[TIME_DEPTH], feed_dict=feed_dict)
-    print("error:\t\t{:.4f}".format(err), end='\r')
+    print("error:\t\t{:.4f}\r".format(err))
 
 
 def test_epoch(sess):
     print("")
     acc = 0
     for j in range(5000//BATCH_SIZE - 1):
-        batch = test_mnist[j * BATCH_SIZE: (j + 1) * BATCH_SIZE]
-        batch_labels = test_mnist_label[j * BATCH_SIZE: (j + 1) * BATCH_SIZE]
+        batch = test_mnist[j*BATCH_SIZE : (j+1)*BATCH_SIZE]
+        batch_labels = test_mnist_label[j*BATCH_SIZE : (j+1) * BATCH_SIZE]
         feed_dict = {}
         feed_dict[inp.placeholder] = batch
         feed_dict[labels.placeholder] = to_one_hot(batch_labels)
         acc += sess.run(accuracy.outputs[TIME_DEPTH], feed_dict=feed_dict)
-        print("accuracy:\t{:.2f} %".format(100 * acc / (j+1)), end='\r')
+        print("accuracy:\t{:.2f} %\r".format(100 * acc / (j+1)))
     print("")
 
 

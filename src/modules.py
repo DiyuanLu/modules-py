@@ -411,6 +411,23 @@ class FullyConnectedLayerModule(ComposedModule):
         self.preactivation.add_input(self.bias)
         self.output_module.add_input(self.preactivation)
 
+class EleMultiModule(TimeOperationModule):
+    ## Returns element wise multiplication
+    def operation(self, *args):
+        x = args[0]
+        for y in args[1:]:
+            x = tf.multiply(x, y, name=self.name)
+        return x
+
+class ConcatModule(TimeOperationModule):
+    def __init__(self, name, axis):
+        self.axis = axis
+        super().__init__(name, axis)
+        
+    # Return concatenated vector
+    def operation(self, *args):
+        print("#######", self.name, list(args))
+        return tf.concat(list(args), self.axis, name=self.name)  # stack them vertically
 
 if __name__ == '__main__':
     f1 = FakeModule("input")

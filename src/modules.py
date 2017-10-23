@@ -10,6 +10,7 @@ class InputContainer(list):
         self.append(other)
         return self
 
+
 ## Base class of a module.
 #  @param name str, every module must have a name
 class Module:
@@ -399,6 +400,7 @@ class TimeConvolutionalLayerModule(TimeComposedModule):
         self.preactivation.add_input(self.bias)
         self.output_module.add_input(self.preactivation)
 
+
 ## This composed module performs a full connection and applies a bias and an
 #  activation function. It does not allow recursions
 class FullyConnectedLayerModule(ComposedModule):
@@ -411,6 +413,7 @@ class FullyConnectedLayerModule(ComposedModule):
         self.preactivation.add_input(self.bias)
         self.output_module.add_input(self.preactivation)
 
+
 class EleMultiModule(TimeOperationModule):
     ## Returns element wise multiplication
     def operation(self, *args):
@@ -419,15 +422,26 @@ class EleMultiModule(TimeOperationModule):
             x = tf.multiply(x, y, name=self.name)
         return x
 
+
 class ConcatModule(TimeOperationModule):
-    def __init__(self, name, axis):
+    def __init__(self, name, axis, resulting_axis_shape):
         self.axis = axis
+        self.resulting_axis_shape = resulting_axis_shape
         super().__init__(name, axis)
         
+
     # Return concatenated vector
     def operation(self, *args):
-        print("#######", self.name, list(args))
+        new_axis_shape = sum([t.shape[self.axis].value for t in args])
+        if new_axis_shape > self.resulting_axis_shape:
+            raise Exception("Inputs are too big!")
+        if new_axis_shape < self.resulting_axis_shape:
+            shape = [s.value for s in args[0].shape]
+            shape[self.axis] = self.resulting_axis_shape - new_axis_shape
+            args = list(args)
+            args.append(tf.zeros(shape=shape, dtype=args[0].dtype))
         return tf.concat(list(args), self.axis, name=self.name)  # stack them vertically
+
 
 if __name__ == '__main__':
     f1 = FakeModule("input")
@@ -452,7 +466,6 @@ if __name__ == '__main__':
     fs = [f1, f2, f3, f4, f5]
     for f in fs:
         print(f.name, "---", f.outputs)
-
 
     # inp = InputModule(shape=(10, 8, 8, 1), name="input")
     # conv1 = Conv2DModule((4,4,1,3), (1,1,1,1), name="conv1")

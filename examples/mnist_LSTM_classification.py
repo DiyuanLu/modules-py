@@ -1,6 +1,7 @@
 import sys
 sys.path.append("../src/")
 import modules as mod
+import LSTM_module2 as lstm
 import get_mnist as gm
 import tensorflow as tf
 import numpy as np
@@ -10,28 +11,28 @@ class LSTM_Cell(mod.ComposedModule):
     '''Define LSTM net'''
     def define_inner_modules(self, name, in_size, cell_size):
         """Typical LSTM cell with three gates. Detailed tutorial see
-        http://colah.github.io/posts/2015-08-Understanding-LSTMs/ 
+        http://colah.github.io/posts/2015-08-Understanding-LSTMs/
         """
         self.in_size = in_size
         self.cell_size = cell_size
-        self.input_module = mod.ConcatModule("concat", 1)
+        self.input_module = mod.ConcatModule("concat", 1, in_size + cell_size)
         # Three gates for input, output, cell state
-        f_t = mod.FullyConnectedLayerModule("f_t", tf.sigmoid, cell_size, in_size + cell_size)
-        i_t = mod.FullyConnectedLayerModule("i_t", tf.sigmoid, cell_size, in_size + cell_size)
-        o_t = mod.FullyConnectedLayerModule("o_t", tf.sigmoid, cell_size, in_size + cell_size)
-        
+        f_t = mod.FullyConnectedLayerModule("f_t", tf.sigmoid, in_size + cell_size, cell_size)
+        i_t = mod.FullyConnectedLayerModule("i_t", tf.sigmoid, in_size + cell_size, cell_size)
+        o_t = mod.FullyConnectedLayerModule("o_t", tf.sigmoid, in_size + cell_size, cell_size)
+
         # transformed input and last time hidden-state
-        CHat_t = mod.FullyConnectedLayerModule("CHat_t", tf.tanh, cell_size, in_size + cell_size)
+        CHat_t = mod.FullyConnectedLayerModule("CHat_t", tf.tanh, in_size + cell_size, cell_size)
         # cell states related
         self.C_t = mod.AddModule("C_t")
         tanh_C_t = mod.ActivationModule("tanh_C_t", tf.tanh)
         # residual of last time cell state
         state_residual = mod.EleMultiModule("state_residual")
         state_update = mod.EleMultiModule("state_update")   # i_t(eleMulti)CHat_t
-        
+
         # hidden states
         self.h_t = mod.EleMultiModule("h_t")
-        
+
         # making connections
         self.input_module.add_input(self.h_t, -1)
         f_t.add_input(self.input_module)
@@ -48,9 +49,9 @@ class LSTM_Cell(mod.ComposedModule):
 
         o_t.add_input(self.input_module)
         tanh_C_t.add_input(self.C_t)
-        self.h_t.add_input(o_t, 0)   
+        self.h_t.add_input(o_t, 0)
         self.h_t.add_input(tanh_C_t, 0)
-            
+
         # set input and output
         self.output_module = self.h_t
 
@@ -69,6 +70,9 @@ def to_one_hot(num_classes, labels):
 
 BATCH_SIZE = 500
 TIME_DEPTH = 10
+IMG_HEIGHT = 28
+IMG_WIDTH = 28
+NUM_CLASSES = 10
 
 train_images_name = "train-images-idx3-ubyte.gz"  #  training set images (9912422 bytes)
 train_data_filename = gm.maybe_download(train_images_name)
@@ -87,31 +91,27 @@ test_label_filename = gm.maybe_download(test_label_name)
 test_mnist_label = gm.extract_labels(test_label_filename, 5000)
 
 
-inp = mod.ConstantPlaceholderModule("input", shape=(BATCH_SIZE, 28, 28, 1))
-labels = mod.ConstantPlaceholderModule("input_labels", shape=(BATCH_SIZE, 10))
+inp = mod.ConstantPlaceholderModule("input", shape=(BATCH_SIZE, IMG_HEIGHT, IMG_WIDTH, 1))
+labels = mod.ConstantPlaceholderModule("input_labels", shape=(BATCH_SIZE, NUM_CLASSES))
 
-activations = [tf.nn.relu, tf.nn.relu, tf.nn.relu, tf.identity]
-filter_shapes = [[8,8,1,6],[8,8,6,16]]
-bias_shapes = [[1,28,28,6],[1,14,14,16], [1,120],[1,10]]
-ksizes = [[1,4,4,1],[1,4,4,1]]
-pool_strides = [[1,2,2,1], [1,2,2,1]]
-#network = RecurentLenet5("rlenet5", activations, filter_shapes, bias_shapes, ksizes, pool_strides)
+cell_size = 200
+network = LSTM_Cell("lstm", IMG_HEIGHT, cell_size)
 #
-#one_time_error = mod.ErrorModule("cross_entropy", cross_entropy)
-#error = mod.TimeAddModule("add_error")
-#accuracy = mod.BatchAccuracyModule("accuracy")
-#optimizer = mod.OptimizerModule("adam", tf.train.AdamOptimizer())
+one_time_error = mod.ErrorModule("cross_entropy", cross_entropy)
+error = mod.TimeAddModule("add_error")
+accuracy = mod.BatchAccuracyModule("accuracy")
+optimizer = mod.OptimizerModule("adam", tf.train.AdamOptimizer())
 #
-#network.add_input(inp)
-#one_time_error.add_input(network)
-#one_time_error.add_input(labels)
-#error.add_input(one_time_error, 0)
-#error.add_input(error, -1)
-#accuracy.add_input(network)
-#accuracy.add_input(labels)
-#optimizer.add_input(error)
-#optimizer.create_output(TIME_DEPTH)
-#accuracy.create_output(TIME_DEPTH)
+network.add_input(inp)
+one_time_error.add_input(network)
+one_time_error.add_input(labels)
+error.add_input(one_time_error, 0)
+error.add_input(error, -1)
+accuracy.add_input(network)
+accuracy.add_input(labels)
+optimizer.add_input(error)
+optimizer.create_output(TIME_DEPTH)
+accuracy.create_output(TIME_DEPTH)
 #
 
 

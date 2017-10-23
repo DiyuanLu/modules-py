@@ -7,7 +7,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.io import wavfile
 import sounddevice as sd
-#import ipdb
+from plotting import Plot
+
+import ipdb
 def mean_squared_error(x, y, name):
     return tf.square(x - y, name=name)
 
@@ -34,7 +36,30 @@ def concat_audios(audios, ifnorm=True, save_name="train_concat"):
         snd_total = snd_total / (2.**15)
     return np.array(snd_total), sampFreq
 
-audio_names_train = ['sp10.wav', 'sp11.wav', 'sp12.wav', 'sp13.wav']
+def test_epoch(sess):
+    error_total = []
+    prediction_total = []
+    save_name = "lstm_test"
+    feed_dict = {}
+    feed_dict[inp.placeholder] = testX
+    feed_dict[target.placeholder] = testY
+    for t in range(testX.shape[0]):
+        error, prediction = sess.run([opt.outputs[TIME_DEPTH], out_prediction.outputs], feed_dict=feed_dict)
+        error_total.append(error[0][0])
+        prediction_total.append(prediction[1][0][0])
+        if t%10 == 0:
+            sys.stdout.write("\r" + "epoch process{}%".format((t / testX.shape[0])*100))
+            sys.stdout.flush()
+                
+    plt.figure()
+    myplot.plot_compare(testY, np.array(prediction_total), title="Prediction in test", x="time", y="amplitude", save_name=save_name+".png" )
+    playback = playback_transform(np.array(prediction_total), sampFreq0)
+    sd.play(playback, sampFreq0)
+    wavfile.write(save_name+".wav", sampFreq0, playback)
+    
+    print("")
+
+audio_names_train = ['sp10.wav']   #'sp12.wav', 'sp13.wav', 'sp11.wav', 
 audio_names_test = ['sp14.wav']
 s_train, sampFreq0 = concat_audios(audio_names_train, ifnorm=True, save_name="4-on-1-train_concat")
 s_test, sampFreq1 = concat_audios(audio_names_test, ifnorm=True, save_name="4-on-1-test_concat")
@@ -47,52 +72,56 @@ testY = s_test[1: ].reshape(-1, 1)
 CELL_SIZE = 100
 TIME_DEPTH = 5
 inp = mod.ConstantPlaceholderModule("input", shape=(1, 1), dtype="float32")
-label = mod.ConstantPlaceholderModule("label", shape=(1, 1))
+target = mod.ConstantPlaceholderModule("target", shape=(1, 1))
 cell = lstm.LSTM_Cell("lstm_cell", 1, CELL_SIZE)
-lin_class = mod.FullyConnectedLayerModule("linear_classifier", tf.identity, CELL_SIZE, 1)
+out_prediction = mod.FullyConnectedLayerModule("out_prediction", tf.identity, CELL_SIZE, 1)
 err = mod.ErrorModule("mse", mean_squared_error)
 opt = mod.OptimizerModule("adam", tf.train.AdamOptimizer())
 
 #  Connect input
 cell.add_input(inp)
-lin_class.add_input(cell)
-err.add_input(label)
-err.add_input(lin_class)
+out_prediction.add_input(cell)
+err.add_input(target)
+err.add_input(out_prediction)
 opt.add_input(err)
 opt.create_output(TIME_DEPTH)
+out_prediction.create_output(1)
 
+myplot = Plot()
 
-#def test_epoch(sess):
-    #acc = 0
-    #for j in range(5000//BATCH_SIZE - 1):
-        #batch = test_mnist[j*BATCH_SIZE : (j+1)*BATCH_SIZE]
-        #batch_labels = test_mnist_label[j*BATCH_SIZE : (j+1) * BATCH_SIZE]
-        #feed_dict = {}
-        #feed_dict[inp.placeholder] = batch
-        #feed_dict[labels.placeholder] = to_one_hot(batch_labels)
-        #acc += sess.run(accuracy.outputs[TIME_DEPTH], feed_dict=feed_dict)
-        #print("accuracy:\t{:.2f} %\r".format(100 * acc / (j+1)))
-    #print("")
-
-
-N_EPOCH = 1000
-
+length = trainX.shape[0]
+BATCH_SIZE = 200
 with tf.Session() as sess:
-    error = []
+    error_total = []
+    prediction_total = []
     sess.run(tf.global_variables_initializer())
-    for t in range(N_EPOCH):
-        res = sess.run(opt.outputs[TIME_DEPTH], feed_dict={inp.placeholder: [[s_train[t]]], label.placeholder: [[s_test[t]]]})
-        error.append(res[0][0])
-        if t%2 == 0:
-            sys.stdout.write("\r" + "epoch process{}%".format((t / N_EPOCH)*100))
-            sys.stdout.flush()
-            #test_epoch(sess)
-        
+    for epoch in range(1):
+        save_name = "lstm_{}_epoch_train_predict".format(epoch+1)
+        for t in range(length):
+            #ipdb.set_trace()
+            error, prediction = sess.run([opt.outputs[TIME_DEPTH], out_prediction.outputs], feed_dict={inp.placeholder: [trainX[t]], target.placeholder: [trainY[t]]})
+            error_total.append(error[0][0])
+            prediction_total.append(prediction[1][0][0])
+            if t%2 == 0:
+                sys.stdout.write("\r" + "epoch process{}%".format((t / length)*100))
+                sys.stdout.flush()
+                #
+    ipdb.set_trace()
     plt.figure()
-    plt.plot(np.array(error), 'c-')
-    plt.title("MSE with LSTM cell")
-    plt.xlabel("epoch")
-    plt.ylabel("MSE")
-    plt.savefig("audio_lstm_error.png", format="png")
+    myplot.plot_compare(trainY, np.array(prediction_total), title="Prediction in test", x="time", y="amplitude", save_name=save_name+".png" )
+    playback = playback_transform(np.array(prediction_total), sampFreq0)
+    sd.play(playback, sampFreq0)
+    wavfile.write(save_name+".wav", sampFreq0, playback)
+    
+    test_epoch(sess)
     plt.show()
+
+
+
+plt.figure()
+myplot.plot_score(np.array(error_total), length, title="Score on training steps", x="steps", y="MSE", save_name=save_name+"MSE in training steps.png")
+
+plt.show()
+
+
     
